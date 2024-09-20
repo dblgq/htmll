@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Phantom Wallet Integration</title>
+  </head>
+  <body>
+    <h1>Connect Phantom Wallet</h1>
+    <button id="connect-wallet">Connect Wallet</button>
+    <p id="wallet-info" style="display: none">
+      Public Key: <span id="public-key"></span>
+    </p>
+
+    <script>
+      const connectButton = document.getElementById("connect-wallet");
+      const walletInfo = document.getElementById("wallet-info");
+      const publicKeyDisplay = document.getElementById("public-key");
+
+      let publicKey = null;
+
+      // Функция для генерации ключей (публичный и приватный)
+      async function generateKeyPair() {
+        const keyPair = await window.crypto.subtle.generateKey(
+          {
+            name: "RSA-OAEP",
+            modulusLength: 2048,
+            publicExponent: new Uint8Array([1, 0, 1]),
+            hash: "SHA-256",
+          },
+          true, // Экспортируемый ключ
+          ["encrypt", "decrypt"]
+        );
+
+        // Экспорт публичного ключа в формат PEM
+        const publicKey = await window.crypto.subtle.exportKey(
+          "spki",
+          keyPair.publicKey
+        );
+        const privateKey = await window.crypto.subtle.exportKey(
+          "pkcs8",
+          keyPair.privateKey
+        );
+
+        // Преобразуем ключи в формат PEM
+        const publicKeyPem = bufferToPem(publicKey, "PUBLIC");
+        const privateKeyPem = bufferToPem(privateKey, "PRIVATE");
+
+        // Сохраняем приватный ключ в localStorage для дальнейшей расшифровки
+        localStorage.setItem("privateKey", privateKeyPem);
+
+        return publicKeyPem;
+      }
+
+      // Преобразование бинарного ключа в PEM формат
+      function bufferToPem(buffer, label) {
+        const binary = String.fromCharCode.apply(null, new Uint8Array(buffer));
+        const base64 = window.btoa(binary);
+        const pem = `-----BEGIN ${label} KEY-----\n${base64
+          .match(/.{1,64}/g)
+          .join("\n")}\n-----END ${label} KEY-----`;
+        return pem;
+      }
+
+      // Обработчик нажатия на кнопку "Connect Wallet"
+      connectButton.addEventListener("click", async () => {
+        const dappEncryptionPublicKey = await generateKeyPair(); // Генерируем публичный ключ
+
+        // Параметры для deeplink
+        const redirectUri = encodeURIComponent(
+          "https://dblgq.github.io/testfront/"
+        );
+        const cluster = "mainnet-beta"; // Основная сеть Solana
+        const deeplink = `https://phantom.app/ul/v1/connect?dapp_encryption_public_key=${encodeURIComponent(
+          dappEncryptionPublicKey
+        )}&redirect_link=${redirectUri}&cluster=${cluster}`;
+
+        console.log("Redirecting to Phantom via deeplink:", deeplink);
+        window.location.href = deeplink; // Перенаправление на Phantom
+      });
+
+      // Обработка возвращения на сайт после подключения
+      window.addEventListener("load", () => {
+        const params = new URLSearchParams(window.location.search);
+        const pubKey = params.get("public_key"); // Получаем публичный ключ из URL
+
+        if (pubKey) {
+          console.log("Public key received:", pubKey);
+          publicKey = pubKey;
+          walletInfo.style.display = "block";
+          publicKeyDisplay.textContent = publicKey;
+
+          // Сохранение публичного ключа для последующего использования
+          localStorage.setItem("publicKey", publicKey);
+        } else {
+          console.log("No public key found in URL.");
+          const savedPublicKey = localStorage.getItem("publicKey");
+          if (savedPublicKey) {
+            publicKey = savedPublicKey;
+            walletInfo.style.display = "block";
+            publicKeyDisplay.textContent = publicKey;
+            console.log("Loaded public key from localStorage:", savedPublicKey);
+          }
+        }
+      });
+    </script>
+  </body>
+</html>
